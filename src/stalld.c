@@ -40,6 +40,11 @@
 #define MAX_WAITING_PIDS	30
 
 /*
+ * flag indicating that the deadline scheduler is available
+ */
+int use_deadline;
+
+/*
  * See kernel/sched/debug.c:print_task().
  */
 struct task_info {
@@ -117,6 +122,11 @@ int config_foreground = 0;
  */
 unsigned long config_dl_period  = 1000000000;
 unsigned long config_dl_runtime = 20000;
+
+/*
+ * FIFO priority defaults
+ */
+unsigned long config_fifo_priority = 98;
 
 /*
  * control loop (time in seconds)
@@ -692,19 +702,81 @@ int parse_cpu_info(struct cpu_info *cpu_info, char *buffer, int buffer_size)
 	return 0;
 }
 
+void setupattr(struct sched_attr *attr)
+{
+	memset(attr, 0, sizeof(*attr));
+	attr->size = sizeof(*attr);
+	if (use_deadline) {
+		attr->sched_policy	= SCHED_DEADLINE;
+		attr->sched_runtime	= config_dl_runtime;
+		attr->sched_deadline	= config_dl_period;
+		attr->sched_period	= config_dl_period;
+	}
+	else {
+		attr->sched_policy	= SCHED_FIFO;
+		attr->sched_priority	= config_fifo_priority;
+	}
+}
+
+const char *get_boost_policy(void)
+{
+	if (use_deadline)
+		return "SCHED_DEADLINE";
+	return "SCHED_FIFO";
+}
+
+void normalize_timespec(struct timespec *ts)
+{
+        while (ts->tv_nsec >= NS_PER_SEC) {
+                ts->tv_nsec -= NS_PER_SEC;
+                ts->tv_sec++;
+        }
+}
+
+void get_current_time(struct timespec *now)
+{
+	int ret = clock_gettime(CLOCK_MONOTONIC, now);
+	if (ret == -1)
+		log_msg("wait_for_period: failed to get current time!");
+}
+
+void wait_for_period(struct timespec *start)
+{
+	int ret;
+	struct timespec period_end = *start;
+
+	/*
+	 * if we're using SCHED_DEADLINE then just
+	 * sleep for boost duration and return
+	 */
+	if (use_deadline) {
+		sleep(config_boost_duration);
+		return;
+	}
+
+	/*
+	 * if we're using SCHED_FIFO to boost then take care
+	 * to sleep to the period end (emulate SCHED_DEADLINE)
+	 */
+	period_end.tv_nsec += config_dl_period;
+	normalize_timespec(&period_end);
+	ret = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME,
+			      &period_end, NULL);
+	if (ret == -1)
+		log_msg("wait_for_period: clock_nanosleep failed!: %s",
+			strerror(errno));
+}
+
 int boost_starving_task(int pid)
 {
 	int ret;
 	int flags = 0;
 	struct sched_attr new_attr;
 	struct sched_attr old_attr;
+	struct timespec start;
 
-	memset(&new_attr, 0, sizeof(new_attr));
-	new_attr.size = sizeof(new_attr);
-	new_attr.sched_policy   = SCHED_DEADLINE;
-	new_attr.sched_runtime  = config_dl_runtime;
-	new_attr.sched_deadline = config_dl_period;
-	new_attr.sched_period   = config_dl_period;
+	setupattr(&new_attr);
+	get_current_time(&start);
 
 	/*
 	 * Get the old prio, to be restored at the end of the
@@ -717,7 +789,8 @@ int boost_starving_task(int pid)
 	 */
 	ret = sched_setattr(pid, &new_attr, flags);
 	if (ret < 0) {
-	    log_msg("sched_setattr failed to boost pid %d: %s\n", pid, strerror(errno));
+	    log_msg("sched_setattr failed to boost pid %d using %s: %s\n",
+		    pid, get_boost_policy(), strerror(errno));
 	    return 1;
 	}
 
@@ -727,7 +800,7 @@ int boost_starving_task(int pid)
 	 * XXX: We might want to check if the task suspended before the
 	 * end of the duration.
 	 */
-	sleep(config_boost_duration);
+	wait_for_period(&start);
 
 	/*
 	 * Restore the old priority.
@@ -1155,11 +1228,25 @@ int conservative_main(struct cpu_info *cpus, int nr_cpus)
 	}
 }
 
+int check_deadline(void)
+{
+	char buffer[BUFFER_SIZE];
+
+	if (read_sched_debug(buffer, BUFFER_SIZE) == 0)
+		die("check_deadline: error reading sched_debug info");
+
+	if (get_variable_long_value(buffer, ".dl_nr_running") != -1)
+		return 1;
+	log_msg("deadline scheduler not available, falling back to fifo");
+	return 0;
+}
 
 int main(int argc, char **argv)
 {
 	struct cpu_info *cpus;
 	int nr_cpus;
+
+	use_deadline = check_deadline();
 
 	parse_args(argc, argv);
 

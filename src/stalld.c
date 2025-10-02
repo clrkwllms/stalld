@@ -153,13 +153,15 @@ int config_reservation = 0;
 
 /*
  * Select a backend.
- * Note that eBPF not supported on i686 and powerpc
+ * Note that eBPF not supported on i686, powerpc, and on x86 3.X kernels.
  */
-#if !__powerpc__ && !__i386__
+#if !__powerpc__ && !__i386__ && !LEGACY
 struct stalld_backend *backend = &queue_track_backend;
 #else
 struct stalld_backend *backend = &sched_debug_backend;
 #endif
+
+
 
 /*
  * Set of CPUs in which stalld should run.

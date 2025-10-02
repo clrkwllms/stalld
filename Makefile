@@ -9,6 +9,14 @@ ARCH=$(shell uname -m)
 endif
 $(info ARCH=$(ARCH))
 
+LEGACY_VER := 3
+ifeq ($(strip $(KERNEL_VER)),)
+KERNEL_VER=$(shell uname -r | cut -f 1 -d .)
+endif
+$(info Kernel Major Version is $(KERNEL_VER))
+
+IS_LEGACY:= $(shell test $(KERNEL_VER) -le $(LEGACY_VER) && echo "true" || echo "false")
+
 USE_BPF := 1
 FCF_PROTECTION := -fcf-protection
 MTUNE	:= -mtune=generic
@@ -32,6 +40,10 @@ endif
 ifeq ($(ARCH),powerpc)
 USE_BPF := 0
 MTUNE := -mtune=powerpc
+endif
+ifeq ($(IS_LEGACY),true)
+USE_BPF := 0
+FCF_PROTECTION := 
 endif
 
 $(info USE_BPF=$(USE_BPF))
@@ -57,11 +69,18 @@ DEFS	:=	-DUSE_BPF=$(USE_BPF) -D_FORTIFY_SOURCE=3 -D_GLIBCXX_ASSERTIONS -DDEBUG_S
 
 # note that RPMCFLAGS and RPMLDFLAGS are variables that come from the specfile when
 # building for Fedora/CentOS/RHEL/et al
+#
 
 ifeq ($(RPMCFLAGS),)
 CFLAGS	:=	-DVERSION=\"$(VERSION)\" $(FOPTS) $(MOPTS) $(WOPTS) $(SOPTS) $(DEFS)
 else
 CFLAGS	:=	 $(RPMCFLAGS) $(DEFS)
+endif
+
+ifeq ($(IS_LEGACY),true)
+$(info Compiling with Legacy Mode enabled)
+$(info Overwriting RPMCFLAGS...)
+CFLAGS	:=	-DVERSION=\"$(VERSION)\" $(FOPTS) $(MOPTS) $(WOPTS) $(DEFS) -std=c99 -DLEGACY
 endif
 
 ifeq ($(DEBUG),0)
@@ -200,7 +219,7 @@ uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/throttlectl
 	make -C systemd DESTDIR=$(INSPATH) uninstall
 
-.PHONY: clean tarball systemd push annocheck
+.PHONY: clean tarball systemd push annocheck help
 clean:
 	@test ! -f stalld || rm stalld
 	@test ! -f stalld-static || rm stalld-static
@@ -221,3 +240,22 @@ tarball:  clean
 
 annocheck: stalld
 	annocheck --ignore-unknown --verbose --profile=el10 --debug-dir=/usr/lib/debug/ ./stalld
+
+help:
+	@echo  'Cleaning targets:'
+	@echo  '  clean            - Clean the main executable, tests, objects, and tarballs.'
+	@echo  ''
+	@echo 'Building targets:'
+	@echo '  stalld            - Build the main executable (stalld).'
+	@echo '  static            - Build a statically linked executable (stalld-static).'
+	@echo '  tests             - Run tests in the "tests" subdirectory.'
+	@echo '  tarball           - Create a source tarball: $(NAME)-$(VERSION).tar.$(CEXT)'
+	@echo ''
+	@echo 'Installation targets:'
+	@echo '  install           - Install the executable, man page, docs, and licenses.'
+	@echo '  uninstall         - Remove all installed files.'
+	@echo ''
+	@echo 'Utility targets:'
+	@echo '  annocheck         - Run the annocheck security analysis tool on the stalld executable.'
+	@echo '  help              - Display this help message.'
+

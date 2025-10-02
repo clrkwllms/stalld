@@ -44,7 +44,7 @@ parse_args()
 # script start
 #
 
-if [[ ! -x ./stalld ]] then
+if [[ ! -x ./stalld ]]; then
    echo "No stalld executable in the current directory!"
    exit 1
 fi

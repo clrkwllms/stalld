@@ -924,12 +924,22 @@ int boost_cpu_starving_vector(struct cpu_starving_task_info *vector, int nr_cpus
 			log_verbose("\t cpu %d: pid: %d starving for %llu\n",
 				    i, cpu->pid, (now - cpu->since));
 
-		if (config_log_only)
+		/* Skip if no task or not starving long enough */
+		if (cpu->pid == 0 || (now - cpu->since) < config_starving_threshold)
 			continue;
 
-		/* Skip if no task or not starving long enough */
-		if (cpu->pid == 0 || (now - cpu->since) <= config_starving_threshold)
+		/* Log when task has reached starvation threshold */
+		if ((now - cpu->since) >= config_starving_threshold) {
+			log_msg("%s-%d starved on CPU %d for %d seconds\n",
+				cpu->task.comm, cpu->pid, i,
+				(now - cpu->since));
+		}
+
+		if (config_log_only) {
+			/* Reset timestamp to avoid continuous logging */
+			cpu->since = now;
 			continue;
+		}
 
 		/* Skip if task is on denylist */
 		if (config_ignore && !check_task_ignore(&cpu->task))

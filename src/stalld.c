@@ -289,9 +289,10 @@ int get_cpu_busy_list(struct cpu_info *cpus, int nr_cpus, char *busy_cpu_list)
 			continue;
 		}
 
-		log_verbose ("\t cpu %d had %ld idle time, and now has %ld\n",
-			     cpu->id, cpu->idle_time, idle_time);
-
+		/*
+		 * log_verbose ("\t cpu %d had %ld idle time, and now has %ld\n",
+		 *	     cpu->id, cpu->idle_time, idle_time);
+		 */
 		/* If the idle time did not change, the CPU is busy. */
 		if (cpu->idle_time == idle_time) {
 			busy_cpu_list[i] = 1;
@@ -795,7 +796,7 @@ static int should_skip_idle_cpus(struct cpu_info *cpus, int nr_cpus, char *busy_
 		log_verbose("all CPUs had idle time, skipping parse\n");
 		return 1;
 	}
-
+	log_verbose("some cpus ran, so run-queues should be parsed\n");
 	return 0;
 }
 

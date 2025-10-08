@@ -293,6 +293,15 @@ int get_cpu_busy_list(struct cpu_info *cpus, int nr_cpus, char *busy_cpu_list)
 		 * log_verbose ("\t cpu %d had %ld idle time, and now has %ld\n",
 		 *	     cpu->id, cpu->idle_time, idle_time);
 		 */
+
+		/* If this is the first check (idle_time was -1), assume busy to be safe */
+		if (cpu->idle_time == -1) {
+			cpu->idle_time = idle_time;
+			busy_cpu_list[i] = 1;
+			busy_count++;
+			continue;
+		}
+
 		/* If the idle time did not change, the CPU is busy. */
 		if (cpu->idle_time == idle_time) {
 			busy_cpu_list[i] = 1;
@@ -1168,6 +1177,7 @@ int main(int argc, char **argv)
 	for (i = 0; i < config_nr_cpus; i++) {
 		cpus[i].buffer = allocate_memory(1, config_buffer_size);
 		cpus[i].buffer_size = config_buffer_size;
+		cpus[i].idle_time = -1;  /* Initialize to -1 so first check doesn't skip busy CPUs */
 	}
 
 	if (config_log_syslog)

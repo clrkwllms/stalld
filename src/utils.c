@@ -767,6 +767,7 @@ static void print_usage(void)
 		"                               starving_threshold time, dispatch a specialized thread to monitor",
 		"                               it.",
 		"	   -O/--power_mode: works as a single threaded tool. Saves CPU, but loses precision.",
+		"	   -N/--no_idle_detect: disable idle CPU detection optimization (for testing)",
 		"	   -g/--granularity: set the granularity at which stalld checks for starving threads",
 		"	   -R/--reservation: percentage of CPU time reserved to stalld using SCHED_DEADLINE.",
 		"	   -a/--affinity: limit stalld's affinity",
@@ -996,6 +997,7 @@ int parse_args(int argc, char **argv)
 			{"aggressive_mode",	no_argument,	   0, 'A'},
 			{"power_mode",		no_argument,	   0, 'O'},
 			{"adaptive_mode",	no_argument,	   0, 'M'},
+			{"no_idle_detect",	no_argument,	   0, 'N'},
 			{"help",		no_argument,	   0, 'h'},
 			{"boost_period",	required_argument, 0, 'p'},
 			{"boost_runtime",	required_argument, 0, 'r'},
@@ -1017,7 +1019,7 @@ int parse_args(int argc, char **argv)
 		/* getopt_long stores the option index here. */
 		int option_index = 0;
 
-		c = getopt_long(argc, argv, "lvkfAOMhsp:r:d:t:c:FVSg:i:I:R:b:a:",
+		c = getopt_long(argc, argv, "lvkfAOMNhsp:r:d:t:c:FVSg:i:I:R:b:a:",
 				 long_options, &option_index);
 
 		/* Detect the end of the options. */
@@ -1137,6 +1139,10 @@ int parse_args(int argc, char **argv)
 			 */
 			config_single_threaded = 0;
 			config_aggressive = 0;
+			break;
+		case 'N':
+			config_idle_detection = 0;
+			log_msg("idle detection disabled\n");
 			break;
 		case 'R':
 			config_reservation = get_long_from_str(optarg);

@@ -435,10 +435,21 @@ void print_boosted_info(int tgid, int pid, struct cpu_info *cpu, char *type)
 {
 	char comm[COMM_SIZE];
 
-	fill_process_comm(tgid, pid, comm, COMM_SIZE);
+	/* Validate inputs to prevent crashes */
+	if (!type) {
+		warn("print_boosted_info called with NULL type\n");
+		return;
+	}
 
-	if (cpu)
+	if (fill_process_comm(tgid, pid, comm, COMM_SIZE) != 0) {
+		/* If we can't get the comm, use a placeholder */
+		snprintf(comm, COMM_SIZE, "<unknown>");
+	}
+
+	if (cpu && cpu->id >= 0 && cpu->id < config_nr_cpus)
 		log_msg("boosted pid %d (%s) (cpu %d) using %s\n", pid, comm, cpu->id, type);
+	else if (cpu)
+		log_msg("boosted pid %d (%s) (cpu <invalid>) using %s\n", pid, comm, type);
 	else
 		log_msg("boosted pid %d (%s) using %s\n", pid, comm, type);
 }

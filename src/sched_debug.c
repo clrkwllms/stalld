@@ -122,7 +122,8 @@ static char *alloc_and_fill_cpu_buffer(int cpu, char *sched_dbg, int sched_dbg_s
 	if (!next_cpu_start)
 		next_cpu_start = sched_dbg + sched_dbg_size;
 
-	size = next_cpu_start - cpu_start;
+	/* add one for the null terminator */
+	size = next_cpu_start - cpu_start + 1;
 
 	if (size <= 0)
 		return NULL;
@@ -171,12 +172,13 @@ static inline char *nextline(char *str)
  * skip a specified number of words on a task line
  */
 
-static inline char *skipwords(char *ptr, int nwords)
+static inline char *skip2word(char *ptr, int nwords)
 {
 	int i;
-	for (i=0; i < nwords; i++) {
-		ptr = skipspaces(ptr);
+	ptr = skipspaces(ptr);
+	for (i=1; i < nwords; i++) {
 		ptr = skipchars(ptr);
+		ptr = skipspaces(ptr);
 	}
 	return ptr;
 }
@@ -228,12 +230,14 @@ static int detect_task_format(void)
 	config_buffer_size = bufsiz;
 	log_msg("initial config_buffer_size set to %zu\n", config_buffer_size);
 
+	/* find the delimiter for task information */
 	ptr = strstr(buffer, TASK_MARKER);
 	if (ptr == NULL) {
 		die("unable to find 'runnable tasks' in buffer, invalid input\n");
 		exit(-1);
 	}
 
+	/* move to the column header line */
 	ptr = nextline(ptr);
 	i = 0;
 
@@ -245,6 +249,8 @@ static int detect_task_format(void)
 	if (strncmp(ptr, "S", strlen("S")) == 0) {
 		log_msg("detect_task_format: NEW_TASK_FORMAT detected\n");
 		retval = NEW_TASK_FORMAT;
+		/* move the word offset by one */
+		i++;
 	}
 	else {
 		log_msg("detect_task_format: OLD_TASK_FORMAT detected\n");
@@ -357,45 +363,81 @@ out_error:
 static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_entries)
 {
 	int pid, ctxsw, prio, comm_size;
-	char *ptr, *line, *end;
+	char *ptr=NULL, *line = buffer, *end;
+	char *buffer_end = buffer + strlen(buffer);
 	struct task_info *task;
 	char comm[COMM_SIZE];
 	int tasks = 0;
 
-	if ((ptr = strstr(buffer, TASK_MARKER)) == NULL)
-		die ("no runnable task section found!\n");
-
 	/*
 	 * If we have less than two tasks on the CPU there is no
 	 * possibility of a stall.
-	 */
+ 	 */
 	if (nr_entries < 2)
 		return 0;
+
+
+	/* search for the task marker header */
+	ptr = strstr(buffer, TASK_MARKER);
+	if (ptr == NULL)
+		die ("no runnable task section found!\n");
+
 	line = ptr;
 
-	/* skip header and divider */
+	/* skip "runnable tasks:" */
+ 	line = nextline(line);
+
+	/* skip header lines */
 	line = nextline(line);
+
+	/* skip divider line */
 	line = nextline(line);
-	
-	/* now loop over the task info */
-	while (tasks < nr_entries) {
+	/* at this point, line should point to the start of a task line */
+
+	/* now loop over the task info
+	 * note that we always discount the task that's on the cpu, so the
+	 * number of waiting tasks will always be at least one less than
+	 * nr_entries.
+	 */
+	while ((line < buffer_end) && tasks < (nr_entries-1)) {
 		task = &task_info[tasks];
+
+		/* move ptr to the first word of the line */
+		ptr = skipspaces(line);
 
 		/*
 		 * In 3.X kernels, only the singular RUNNING task receives
 		 * a "running state" label. Therefore, only care about
-		 * tasks that are not R (running on a CPU).
+		 * tasks that are not R (runnable on a CPU).
 		 */
 		if ((config_task_format == OLD_TASK_FORMAT) &&
 			(*ptr == 'R')) {
 			/* Go to the end of the line and ignore this task. */
-			ptr = strchr(ptr, '\n');
-			ptr++;
+			line = nextline(line);
 			continue;
 		}
 
+		/*
+		 * in newer kernels (>=4.x) every task info line has a state
+		 * but the actual running tasks has a '>R' to denote it.
+		 * since we don't care about the currently running tasks
+		 * skip it.
+		 * Also, we don't care about any states other than 'R' (runnable)
+		 * and 'X' (dying)
+		 */
+		if (config_task_format == NEW_TASK_FORMAT) {
+			if (*ptr == '>' || (*ptr != 'R' && *ptr != 'X')) {
+				line = nextline(line);
+				continue;
+			}
+		}
+
+		/*
+		 * At this point we have a task line to record
+		 */
+		
 		/* get the task field */
-		ptr = skipwords(line, config_task_format_offsets.task);
+		ptr = skip2word(line, config_task_format_offsets.task);
 
 		/* Find the end of the task field */
 		end = skipchars(ptr);
@@ -408,19 +450,20 @@ static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_en
 		}
 		strncpy(comm, ptr, comm_size);
 		comm[comm_size] = '\0';
-		ptr = end;
 
 		/* get the PID field */
-		ptr = skipwords(line, config_task_format_offsets.pid);
+		ptr = skip2word(line, config_task_format_offsets.pid);
 		pid = strtol(ptr, NULL, 10);
 
 		/* get the context switches field */
-		ptr = skipwords(line, config_task_format_offsets.switches);
+		ptr = skip2word(line, config_task_format_offsets.switches);
 		ctxsw = strtol(ptr, NULL, 10);
 
 		/* get the prio field */
-		ptr = skipwords(line, config_task_format_offsets.prio);
+		ptr = skip2word(line, config_task_format_offsets.prio);
 		prio = strtol(ptr, NULL, 10);
+
+		/*log_msg("DEBUG: task%d comm:%s pid:%d ctxsw:%d prio:%d\n", tasks, comm, pid, ctxsw, prio);*/
 
                 /*
                  * In older formats, we must check to
@@ -437,10 +480,10 @@ static int parse_task_lines(char *buffer, struct task_info *task_info, int nr_en
 			task->since = time(NULL);
 			/* increment the count of tasks processed */
 			tasks++;
-		} else {
-			continue;
 		}
 
+		/* move our line pointer to the next availble line */
+		line = nextline(line);
 	}
 	return tasks;
 }

@@ -525,6 +525,7 @@ static int fill_waiting_task(char *buffer, struct cpu_info *cpu_info)
 
 	if (cpu_info == NULL) {
 		warn("NULL cpu_info pointer!\n");
+		cpu_info->starving = NULL;
 		return 0;
 	}
 
@@ -533,8 +534,10 @@ static int fill_waiting_task(char *buffer, struct cpu_info *cpu_info)
 	else
 		nr_entries = cpu_info->nr_running;
 
-	if (nr_entries <= 0)
+	if (nr_entries <= 0) {
+		cpu_info->starving = NULL;
 		return 0;
+	}
 
 	cpu_info->starving = malloc(sizeof(struct task_info) * nr_entries);
 	if (cpu_info->starving == NULL) {

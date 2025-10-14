@@ -386,7 +386,8 @@ void merge_taks_info(int cpu, struct task_info *old_tasks, int nr_old, struct ta
 	int i;
 	int j;
 
-	update_cpu_starving_vector(cpu, &notask);
+	if (config_single_threaded)
+		update_cpu_starving_vector(cpu, &notask);
 
 	for (i = 0; i < nr_old; i++) {
 		old_task = &old_tasks[i];

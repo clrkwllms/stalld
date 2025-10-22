@@ -9,13 +9,15 @@ ARCH=$(shell uname -m)
 endif
 $(info ARCH=$(ARCH))
 
-LEGACY_VER := 3
-ifeq ($(strip $(KERNEL_VER)),)
-KERNEL_VER=$(shell uname -r | cut -f 1 -d .)
+ifeq ($(strip $(GCC_VER)),)
+GCC_VER=$(shell gcc --version | grep ^gcc | cut -f 3 -d ' ' | cut -f 1 -d '.')
 endif
-$(info Kernel Major Version is $(KERNEL_VER))
+$(info GCC_VER=$(GCC_VER))
 
-IS_LEGACY:= $(shell test $(KERNEL_VER) -le $(LEGACY_VER) && echo "true" || echo "false")
+# Does the current GCC compiler have fcf-protection and c99+ as default?
+MIN_GCC_VER := 8
+IS_MINVER := $(intcmp $(GCC_VER), $(MIN_GCC_VER), false, true, true)
+$(info IS_MINVER=$(IS_MINVER))
 
 USE_BPF := 1
 FCF_PROTECTION := -fcf-protection
@@ -41,10 +43,10 @@ ifeq ($(ARCH),powerpc)
 USE_BPF := 0
 MTUNE := -mtune=powerpc
 endif
-ifeq ($(IS_LEGACY),true)
-USE_BPF := 0
+ifeq ($(strip $(IS_MINVER)), false)
 FCF_PROTECTION := 
 endif
+
 
 $(info USE_BPF=$(USE_BPF))
 $(info FCF_PROTECTION=$(FCF_PROTECTION))

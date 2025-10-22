@@ -62,26 +62,9 @@ MOPTS   :=  	$(strip $(MTUNE)) $(strip $(M64)) -mno-omit-leaf-frame-pointer
 
 WOPTS	:= 	-Wall -Werror=format-security
 
-SOPTS	:= 	-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1 -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1
-
 DEFS	:=	-DUSE_BPF=$(USE_BPF) -D_FORTIFY_SOURCE=3 -D_GLIBCXX_ASSERTIONS -DDEBUG_STALLD=$(DEBUG)
 
-
-# note that RPMCFLAGS and RPMLDFLAGS are variables that come from the specfile when
-# building for Fedora/CentOS/RHEL/et al
-#
-
-ifeq ($(RPMCFLAGS),)
-CFLAGS	:=	-DVERSION=\"$(VERSION)\" $(FOPTS) $(MOPTS) $(WOPTS) $(SOPTS) $(DEFS)
-else
-CFLAGS	:=	 $(RPMCFLAGS) $(DEFS)
-endif
-
-ifeq ($(IS_LEGACY),true)
-$(info Compiling with Legacy Mode enabled)
-$(info Overwriting RPMCFLAGS...)
-CFLAGS	:=	-DVERSION=\"$(VERSION)\" $(FOPTS) $(MOPTS) $(WOPTS) $(DEFS) -std=c99 -DLEGACY
-endif
+CFLAGS	:=      -DVERSION=\"$(VERSION)\" $(FOPTS) $(MOPTS) $(WOPTS) $(DEFS)
 
 ifeq ($(DEBUG),0)
 CFLAGS	+=	-g -O2
@@ -90,11 +73,7 @@ CFLAGS	+=	-g3
 endif
 $(info CFLAGS=$(CFLAGS))
 
-ifeq ($(RPMLDFLAGS),)
 LDFLAGS	:=	-ggdb -znow -pie
-else
-LDFLAGS	:=	$(RPMLDFLAGS) -ggdb -znow -pie
-endif
 $(info LDFLAGS=$(LDFLAGS))
 
 LIBS	:=	 -lpthread
@@ -219,7 +198,7 @@ uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/throttlectl
 	make -C systemd DESTDIR=$(INSPATH) uninstall
 
-.PHONY: clean tarball systemd push annocheck help
+.PHONY: clean tarball
 clean:
 	@test ! -f stalld || rm stalld
 	@test ! -f stalld-static || rm stalld-static
@@ -237,9 +216,6 @@ tarball:  clean
 	cp -r $(DIRS) $(FILES) $(NAME)-$(VERSION)
 	tar $(TAROPTS) --exclude='*~' $(NAME)-$(VERSION)
 	rm -rf $(NAME)-$(VERSION)
-
-annocheck: stalld
-	annocheck --ignore-unknown --verbose --profile=el10 --debug-dir=/usr/lib/debug/ ./stalld
 
 help:
 	@echo  'Cleaning targets:'

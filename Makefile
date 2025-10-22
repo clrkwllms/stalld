@@ -198,7 +198,7 @@ uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/throttlectl
 	make -C systemd DESTDIR=$(INSPATH) uninstall
 
-.PHONY: clean tarball
+.PHONY: clean tarball help
 clean:
 	@test ! -f stalld || rm stalld
 	@test ! -f stalld-static || rm stalld-static
@@ -218,6 +218,9 @@ tarball:  clean
 	rm -rf $(NAME)-$(VERSION)
 
 help:
+	@echo ''
+	@echo 'By default, the main executable and tests will be compiled'
+	@echo ''
 	@echo  'Cleaning targets:'
 	@echo  '  clean            - Clean the main executable, tests, objects, and tarballs.'
 	@echo  ''
@@ -232,6 +235,5 @@ help:
 	@echo '  uninstall         - Remove all installed files.'
 	@echo ''
 	@echo 'Utility targets:'
-	@echo '  annocheck         - Run the annocheck security analysis tool on the stalld executable.'
 	@echo '  help              - Display this help message.'
 
